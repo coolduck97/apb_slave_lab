@@ -10,7 +10,7 @@ iverilog -g2012 \
     tb/tb_apb_slave.sv
 
 echo "[2/2] Running simulation..."
-vvp simv
+vvp simv +WAVE +WAVE_FILE=wave.vcd
 
 echo "Simulation complete."
 echo "Generated files: simv, wave.vcd"

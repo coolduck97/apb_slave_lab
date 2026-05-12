@@ -126,9 +126,16 @@ module tb_apb_slave;
     initial begin
         logic [31:0] read_data;
         logic        read_error;
+        string       wave_file;
 
-        $dumpfile("wave.vcd");
-        $dumpvars(0, tb_apb_slave);
+        // Wave dumping is controlled by run.py with the +WAVE plusarg.
+        if ($test$plusargs("WAVE")) begin
+            if (!$value$plusargs("WAVE_FILE=%s", wave_file)) begin
+                wave_file = "wave.vcd";
+            end
+            $dumpfile(wave_file);
+            $dumpvars(0, tb_apb_slave);
+        end
 
         error_count = 0;
 
