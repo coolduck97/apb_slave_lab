@@ -23,13 +23,19 @@ module apb_slave (
     logic [31:0] data_reg;
 
     logic        apb_access;
+    logic        wait_done;
+    logic        transfer_done;
     logic        valid_addr;
 
     // The APB access phase is when both PSEL and PENABLE are high.
     assign apb_access = PSEL && PENABLE;
 
-    // This slave is simple: it is always ready in the access phase.
-    assign PREADY = 1'b1;
+    // PREADY is low for the first access cycle, then high on the next cycle.
+    // This shows how an APB slave can add a simple wait state.
+    assign PREADY = apb_access && wait_done;
+
+    // A transfer finishes only when the slave says it is ready.
+    assign transfer_done = apb_access && PREADY;
 
     // Check whether the address matches one of the registers.
     always_comb begin
@@ -41,8 +47,19 @@ module apb_slave (
         endcase
     end
 
-    // PSLVERR is reported only during an APB access to an invalid address.
-    assign PSLVERR = apb_access && !valid_addr;
+    // wait_done remembers that the first access cycle has already passed.
+    always_ff @(posedge PCLK) begin
+        if (!PRESETn) begin
+            wait_done <= 1'b0;
+        end else if (apb_access && !wait_done) begin
+            wait_done <= 1'b1;
+        end else begin
+            wait_done <= 1'b0;
+        end
+    end
+
+    // PSLVERR is reported when an APB transfer completes with an invalid address.
+    assign PSLVERR = transfer_done && !valid_addr;
 
     // Write registers on the clock edge during an APB write access.
     // Reset is synchronous and active-low, so it is checked inside the clocked block.
@@ -50,7 +67,7 @@ module apb_slave (
         if (!PRESETn) begin
             ctrl_reg <= 32'h0000_0000;
             data_reg <= 32'h0000_0000;
-        end else if (apb_access && PWRITE) begin
+        end else if (transfer_done && PWRITE) begin
             case (PADDR)
                 CTRL_ADDR: ctrl_reg <= PWDATA;
                 DATA_ADDR: data_reg <= PWDATA;
@@ -61,12 +78,12 @@ module apb_slave (
         end
     end
 
-    // Return read data during an APB read access.
+    // Return read data when an APB read transfer completes.
     // For write cycles or idle/setup cycles, PRDATA is driven to zero.
     always_comb begin
         PRDATA = 32'h0000_0000;
 
-        if (apb_access && !PWRITE) begin
+        if (transfer_done && !PWRITE) begin
             case (PADDR)
                 CTRL_ADDR:   PRDATA = ctrl_reg;
                 STATUS_ADDR: PRDATA = STATUS_VALUE;

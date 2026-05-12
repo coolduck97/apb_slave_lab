@@ -59,7 +59,7 @@ module tb_apb_slave;
     // APB write transfer:
     // 1. setup phase: PSEL=1, PENABLE=0
     // 2. access phase: PSEL=1, PENABLE=1
-    // The RTL writes on the access phase clock edge.
+    // 3. wait until PREADY=1, then the transfer is complete
     task automatic apb_write(
         input logic [7:0]  addr,
         input logic [31:0] data
@@ -75,7 +75,13 @@ module tb_apb_slave;
             @(posedge PCLK);
             PENABLE <= 1'b1;
 
+            do begin
+                @(posedge PCLK);
+                #1;
+            end while (!PREADY);
+
             @(posedge PCLK);
+            #1;
             PSEL    <= 1'b0;
             PENABLE <= 1'b0;
             PWRITE  <= 1'b0;
@@ -84,7 +90,7 @@ module tb_apb_slave;
         end
     endtask
 
-    // APB read transfer. Data and PSLVERR are sampled in the access phase.
+    // APB read transfer. Data and PSLVERR are sampled when PREADY is high.
     task automatic apb_read(
         input  logic [7:0]  addr,
         output logic [31:0] data,
@@ -101,11 +107,16 @@ module tb_apb_slave;
             @(posedge PCLK);
             PENABLE <= 1'b1;
 
-            #1;
+            do begin
+                @(posedge PCLK);
+                #1;
+            end while (!PREADY);
+
             data  = PRDATA;
             error = PSLVERR;
 
             @(posedge PCLK);
+            #1;
             PSEL    <= 1'b0;
             PENABLE <= 1'b0;
             PADDR   <= 8'h00;
