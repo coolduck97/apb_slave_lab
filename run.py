@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small Icarus Verilog runner for the APB slave lab."""
+"""Small Icarus Verilog runner for the APB master/slave lab."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def run_command(command: list[str], log_file: Path) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compile and run the APB slave RTL simulation."
+        description="Compile and run the APB master/slave RTL simulation."
     )
     parser.add_argument(
         "--wave",
@@ -83,8 +83,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--top",
-        default="tb_apb_slave",
-        help="Top testbench module name. Default: tb_apb_slave",
+        default="tb_apb_interface",
+        help="Top testbench module name. Default: tb_apb_interface",
     )
     parser.add_argument(
         "--clean",
@@ -119,13 +119,13 @@ def main() -> int:
 
     timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with log_file.open("w", encoding="utf-8") as log:
-        log.write("APB slave simulation log\n")
+        log.write("APB master/slave simulation log\n")
         log.write(f"Started: {timestamp}\n")
         log.write("Files:\n")
         for path in sim_files:
             log.write(f"  {path.relative_to(PROJECT_ROOT)}\n")
 
-    print("== APB slave simulation ==")
+    print("== APB master/slave simulation ==")
     print(f"Log file : {log_file.relative_to(PROJECT_ROOT)}")
     print(f"Wave     : {'on' if args.wave else 'off'}")
     print("Files:")

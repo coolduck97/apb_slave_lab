@@ -2,13 +2,33 @@
 
 ## Goal
 
-Create a beginner-friendly APB slave RTL module.
+Create a beginner-friendly APB master connected to an APB slave RTL module.
 
 ## APB Version
 
 Use basic AMBA APB-style handshake.
 
 ## Interface
+
+### APB Master Command Interface
+
+Inputs:
+- clk
+- reset_n
+- write_en
+- write_addr[7:0]
+- write_data[31:0]
+- read_en
+- read_addr[7:0]
+
+Outputs:
+- read_data[31:0]
+- read_data_valid
+- busy
+- done
+- error
+
+### APB Slave Interface
 
 Inputs:
 - PCLK
@@ -36,7 +56,7 @@ Outputs:
 
 - Use SystemVerilog
 - Synchronous active-low reset
-- PREADY is always 1
+- PREADY goes high when the slave completes the transfer
 - PSLVERR is 1 for invalid address
 - Write happens during APB access phase:
   - PSEL == 1
