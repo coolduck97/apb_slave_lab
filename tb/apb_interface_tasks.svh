@@ -15,7 +15,7 @@ function automatic logic [7:0] build_addr(
     logic [7:0] slave_base;
     begin
         // Each slave owns a 16-byte local range. Upper nibble selects slave.
-        slave_base = logic'(slave_idx[3:0]) << 4;
+        slave_base = {slave_idx[3:0], 4'h0};
         build_addr = slave_base + local_addr;
     end
 endfunction
