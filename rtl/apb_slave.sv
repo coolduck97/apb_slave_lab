@@ -26,9 +26,14 @@ module apb_slave (
     logic        wait_done;
     logic        transfer_done;
     logic        valid_addr;
+    logic [7:0]  local_addr;
 
     // The APB access phase is when both PSEL and PENABLE are high.
     assign apb_access = PSEL && PENABLE;
+
+    // In a multi-slave system, PADDR[7:4] selects the slave.
+    // Each slave uses PADDR[3:0] as its local register offset.
+    assign local_addr = {4'h0, PADDR[3:0]};
 
     // PREADY is low for the first access cycle, then high on the next cycle.
     // This shows how an APB slave can add a simple wait state.
@@ -39,7 +44,7 @@ module apb_slave (
 
     // Check whether the address matches one of the registers.
     always_comb begin
-        case (PADDR)
+        case (local_addr)
             CTRL_ADDR,
             STATUS_ADDR,
             DATA_ADDR:   valid_addr = 1'b1;
@@ -68,7 +73,7 @@ module apb_slave (
             ctrl_reg <= 32'h0000_0000;
             data_reg <= 32'h0000_0000;
         end else if (transfer_done && PWRITE) begin
-            case (PADDR)
+            case (local_addr)
                 CTRL_ADDR: ctrl_reg <= PWDATA;
                 DATA_ADDR: data_reg <= PWDATA;
                 default: begin
@@ -84,7 +89,7 @@ module apb_slave (
         PRDATA = 32'h0000_0000;
 
         if (transfer_done && !PWRITE) begin
-            case (PADDR)
+            case (local_addr)
                 CTRL_ADDR:   PRDATA = ctrl_reg;
                 STATUS_ADDR: PRDATA = STATUS_VALUE;
                 DATA_ADDR:   PRDATA = data_reg;

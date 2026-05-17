@@ -58,7 +58,7 @@ task automatic run_test;
     begin
         // The master should leave APB idle after reset.
         check_equal("Master idle after reset", {31'b0, master_busy}, 32'h0000_0000);
-        check_equal("APB idle after reset", {30'b0, PSEL, PENABLE}, 32'h0000_0000);
+        check_equal("APB idle after reset", {30'b0, (|PSEL), PENABLE}, 32'h0000_0000);
 
         // Test the same register behavior on every slave instance.
         for (int s = 0; s < NUM_SLAVES; s++) begin

@@ -19,36 +19,21 @@ module tb_apb_interface;
     logic        master_done;
     logic        master_error;
 
-    // Shared APB command wires from the master.
-    logic        PSEL;
+    // APB command wires from the master.
+    logic [NUM_SLAVES-1:0] PSEL;
     logic        PENABLE;
     logic        PWRITE;
     logic [7:0]  PADDR;
     logic [31:0] PWDATA;
 
-    // Decoded APB wires for each slave.
-    logic [NUM_SLAVES-1:0]        PSEL_s;
+    // APB response wires from each slave.
     logic [NUM_SLAVES-1:0][31:0]  PRDATA_s;
     logic [NUM_SLAVES-1:0]        PREADY_s;
     logic [NUM_SLAVES-1:0]        PSLVERR_s;
 
-    // Muxed APB response wires back to the master.
-    logic [31:0] PRDATA;
-    logic        PREADY;
-    logic        PSLVERR;
-
-    logic [3:0]  selected_slave;
-
-    // Guard against unsupported settings when upper nibble is slave select.
-    initial begin
-        if (NUM_SLAVES > 16) begin
-            $error("NUM_SLAVES must be <= 16 when PADDR[7:4] selects slave index.");
-            $finish;
-        end
-    end
-    logic        select_valid;
-
-    apb_master master (
+    apb_master #(
+        .NUM_SLAVES     (NUM_SLAVES)
+    ) master (
         .clk             (PCLK),
         .reset_n         (PRESETn),
         .write_en        (write_en),
@@ -66,28 +51,21 @@ module tb_apb_interface;
         .PWRITE          (PWRITE),
         .PADDR           (PADDR),
         .PWDATA          (PWDATA),
-        .PRDATA          (PRDATA),
-        .PREADY          (PREADY),
-        .PSLVERR         (PSLVERR)
+        .PRDATA          (PRDATA_s),
+        .PREADY          (PREADY_s),
+        .PSLVERR         (PSLVERR_s)
     );
-
-    // Use the upper nibble of PADDR to choose a slave.
-    assign selected_slave = PADDR[7:4];
-    assign select_valid   = (selected_slave < NUM_SLAVES);
 
     genvar i;
     generate
         for (i = 0; i < NUM_SLAVES; i++) begin : g_slaves
-            assign PSEL_s[i] = PSEL && select_valid && (selected_slave == i[3:0]);
-
             apb_slave slave (
                 .PCLK    (PCLK),
                 .PRESETn (PRESETn),
-                .PSEL    (PSEL_s[i]),
+                .PSEL    (PSEL[i]),
                 .PENABLE (PENABLE),
                 .PWRITE  (PWRITE),
-                // Lower nibble is used as the local register offset per slave.
-                .PADDR   ({4'h0, PADDR[3:0]}),
+                .PADDR   (PADDR),
                 .PWDATA  (PWDATA),
                 .PRDATA  (PRDATA_s[i]),
                 .PREADY  (PREADY_s[i]),
@@ -95,25 +73,6 @@ module tb_apb_interface;
             );
         end
     endgenerate
-
-    // Return selected slave response to the master.
-    always_comb begin
-        PRDATA  = 32'h0000_0000;
-        PREADY  = 1'b0;
-        PSLVERR = 1'b0;
-
-        if (PSEL && PENABLE) begin
-            if (select_valid) begin
-                PRDATA  = PRDATA_s[selected_slave];
-                PREADY  = PREADY_s[selected_slave];
-                PSLVERR = PSLVERR_s[selected_slave];
-            end else begin
-                // Invalid slave index: complete transfer with an error.
-                PREADY  = 1'b1;
-                PSLVERR = 1'b1;
-            end
-        end
-    end
 
     // 100 MHz clock: 10 ns period.
     initial begin

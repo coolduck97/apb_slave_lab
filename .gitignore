@@ -1,0 +1,7 @@
+# Simulation outputs
+/build/
+/simv
+/sim.log
+/wave.vcd
+*.vcd
+
