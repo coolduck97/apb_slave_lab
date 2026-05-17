@@ -7,6 +7,19 @@ localparam logic [31:0] STATUS_VALUE = 32'h0000_00A5;
 
 int error_count;
 
+// Build full APB address from slave index and local register offset.
+function automatic logic [7:0] build_addr(
+    input int          slave_idx,
+    input logic [7:0]  local_addr
+);
+    logic [7:0] slave_base;
+    begin
+        // Each slave owns a 16-byte local range. Upper nibble selects slave.
+        slave_base = logic'(slave_idx[3:0]) << 4;
+        build_addr = slave_base + local_addr;
+    end
+endfunction
+
 // Set all testbench command signals to known idle values.
 task automatic init_test_signals;
     begin
@@ -39,45 +52,57 @@ endtask
 task automatic run_test;
     logic [31:0] read_data;
     logic        command_error;
+    logic [31:0] ctrl_pattern;
+    logic [31:0] data_pattern;
 
     begin
         // The master should leave APB idle after reset.
         check_equal("Master idle after reset", {31'b0, master_busy}, 32'h0000_0000);
         check_equal("APB idle after reset", {30'b0, PSEL, PENABLE}, 32'h0000_0000);
 
-        // Reset should clear the slave RW registers.
-        master_read(CTRL_ADDR, read_data, command_error);
-        check_equal("CTRL reset value", read_data, 32'h0000_0000);
-        check_equal("CTRL reset PSLVERR", {31'b0, command_error}, 32'h0000_0000);
+        // Test the same register behavior on every slave instance.
+        for (int s = 0; s < NUM_SLAVES; s++) begin
+            ctrl_pattern = 32'h1111_0000 + s;
+            data_pattern = 32'hCAFE_B000 + s;
 
-        master_read(DATA_ADDR, read_data, command_error);
-        check_equal("DATA reset value", read_data, 32'h0000_0000);
-        check_equal("DATA reset PSLVERR", {31'b0, command_error}, 32'h0000_0000);
+            // Reset should clear the slave RW registers.
+            master_read(build_addr(s, CTRL_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d CTRL reset value", s), read_data, 32'h0000_0000);
+            check_equal($sformatf("S%0d CTRL reset PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
 
-        // CTRL register write/read test through the APB master.
-        master_write(CTRL_ADDR, 32'h1234_5678, command_error);
-        check_equal("CTRL write PSLVERR", {31'b0, command_error}, 32'h0000_0000);
-        master_read(CTRL_ADDR, read_data, command_error);
-        check_equal("CTRL readback", read_data, 32'h1234_5678);
-        check_equal("CTRL readback PSLVERR", {31'b0, command_error}, 32'h0000_0000);
+            master_read(build_addr(s, DATA_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d DATA reset value", s), read_data, 32'h0000_0000);
+            check_equal($sformatf("S%0d DATA reset PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
 
-        // DATA register write/read test through the APB master.
-        master_write(DATA_ADDR, 32'hCAFE_BABE, command_error);
-        check_equal("DATA write PSLVERR", {31'b0, command_error}, 32'h0000_0000);
-        master_read(DATA_ADDR, read_data, command_error);
-        check_equal("DATA readback", read_data, 32'hCAFE_BABE);
-        check_equal("DATA readback PSLVERR", {31'b0, command_error}, 32'h0000_0000);
+            // CTRL register write/read.
+            master_write(build_addr(s, CTRL_ADDR), ctrl_pattern, command_error);
+            check_equal($sformatf("S%0d CTRL write PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
+            master_read(build_addr(s, CTRL_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d CTRL readback", s), read_data, ctrl_pattern);
+            check_equal($sformatf("S%0d CTRL readback PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
 
-        // STATUS is read-only and always returns the fixed value.
-        master_write(STATUS_ADDR, 32'hFFFF_FFFF, command_error);
-        check_equal("STATUS write PSLVERR", {31'b0, command_error}, 32'h0000_0000);
-        master_read(STATUS_ADDR, read_data, command_error);
-        check_equal("STATUS fixed value", read_data, STATUS_VALUE);
-        check_equal("STATUS read PSLVERR", {31'b0, command_error}, 32'h0000_0000);
+            // DATA register write/read.
+            master_write(build_addr(s, DATA_ADDR), data_pattern, command_error);
+            check_equal($sformatf("S%0d DATA write PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
+            master_read(build_addr(s, DATA_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d DATA readback", s), read_data, data_pattern);
+            check_equal($sformatf("S%0d DATA readback PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
 
-        // Invalid address should assert PSLVERR during the APB transfer.
-        master_read(INVALID_ADDR, read_data, command_error);
-        check_equal("Invalid address PSLVERR", {31'b0, command_error}, 32'h0000_0001);
+            // STATUS is read-only and always returns fixed value.
+            master_write(build_addr(s, STATUS_ADDR), 32'hFFFF_FFFF, command_error);
+            check_equal($sformatf("S%0d STATUS write PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
+            master_read(build_addr(s, STATUS_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d STATUS fixed value", s), read_data, STATUS_VALUE);
+            check_equal($sformatf("S%0d STATUS read PSLVERR", s), {31'b0, command_error}, 32'h0000_0000);
+
+            // Invalid local register offset inside a valid slave range.
+            master_read(build_addr(s, INVALID_ADDR), read_data, command_error);
+            check_equal($sformatf("S%0d invalid local addr PSLVERR", s), {31'b0, command_error}, 32'h0000_0001);
+        end
+
+        // Invalid slave index should assert PSLVERR from the interconnect.
+        master_read(build_addr(NUM_SLAVES, CTRL_ADDR), read_data, command_error);
+        check_equal("Invalid slave index PSLVERR", {31'b0, command_error}, 32'h0000_0001);
     end
 endtask
 
